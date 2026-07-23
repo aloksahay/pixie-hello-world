@@ -101,7 +101,60 @@ Node + TypeScript + ethers.
    (`bad attestor`), second mint per wallet fails.
 
 ## Deferred
-- iOS app (native, baked-in wallet) — backend scan page stands in for now.
+- iOS app (native, baked-in wallet) — **separate repo**; backend scan page stands
+  in for now.
 - BLE address-bound claims via the FSP CBOR channel (`task-ble.c`).
-- Production key (secure element / RSA-DS attestation); claim expiry once a trusted
-  time source exists.
+- Claim expiry once a trusted time source exists (nonce-only single-use today).
+- Production key hardening — see below.
+
+---
+
+## Production hardening (deferred)
+
+The contract's `ecrecover == attestor` gate is already production-grade. The gap is
+entirely **device-side**, and it has two independent parts that defend against two
+different attackers. **Both A and B are required for production.**
+
+Today the attestor key comes from `poap_getSigningKey` → `ffx_deviceTestPrivkey(.,0)`
+(`device-info.c:603`), which the SDK explicitly labels *"Testing ONLY … not secure"*
+(`firefly-hollows.h:443`). It is device-unique and hardware-rooted in its
+*derivation* (DS peripheral + eFuse), which is fine — but:
+- the raw secp256k1 private key is **materialized in firmware RAM** every time we
+  sign (extractable via bugs, debug ports, or modified firmware);
+- a debug flag (`showMnemonic`, `device-info.c:638`) can print the mnemonic;
+- the attestor address is **not bound to any genuine-Firefly proof** — `setAttestor`
+  trusts a bare address read off the serial log, which anyone (dev board, emulator,
+  random keypair) can produce.
+
+### A — Non-extractable signing key
+*Stops theft of a genuine device's key (remote minting without the device).*
+- **Preferred:** secure-element secp256k1 signer (device advertises
+  `FfxDeviceOptionSecureElement`) so the key never enters firmware RAM and
+  `ecrecover` stays cheap. **Blocked** on SDK exposing a production secp256k1
+  signer (only the dev key exists today).
+- **Reachable now (config, not code):** provision **Secure Boot v2 + Flash
+  Encryption** (already enabled in `sdkconfig`). Only signed firmware runs and
+  flash is encrypted at rest, closing "malicious firmware extracts the key" and
+  "dump the flash." Residual risk: a bug in our own signed firmware, or physical
+  eFuse/DS attacks.
+- **Strongest but awkward:** sign with the DS-peripheral RSA-3072 key
+  (`ffx_deviceAttest`, key inaccessible even to firmware) — but on-chain RSA
+  verify (modexp + large calldata) is heavy for an ERC-721 mint.
+
+### B — Genuineness binding of the signer
+*Stops a fake attestor being trusted (impersonating a Firefly).*
+- Before trusting an address, have the device's **hardware RSA key** sign
+  "secp256k1 address X is my POAP attestor" and present `attestProof` (factory
+  proof chaining to Firefly's manufacturing CA).
+- Verify both at `setAttestor` time (off-chain, or on-chain) so X is trusted only
+  if a *provably genuine* Firefly vouched for it. Closes the "bare address" gap.
+
+### Realistic production ladder
+1. **B + provision Secure Boot / Flash Encryption** — mostly reachable in this
+   repo; keeps the cheap secp256k1/ecrecover design and closes both attacker
+   classes to a strong degree.
+2. **Full A (secure-element secp256k1)** — when the SDK exposes it, for
+   hardware-guaranteed non-extractability.
+
+All key access stays behind the single `poap_getSigningKey` choke point, so the
+swap is localized.
