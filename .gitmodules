@@ -3,7 +3,7 @@
 	url = https://github.com/firefly/component-hollows.git
 [submodule "components/firefly-scene"]
 	path = components/firefly-scene
-	url = https://github.com/firefly/component-scene.git
+	url = https://github.com/aloksahay/component-scene.git
 [submodule "components/firefly-display"]
 	path = components/firefly-display
 	url = https://github.com/firefly/component-display.git
