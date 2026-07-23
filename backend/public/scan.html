@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Firefly POAP — Claim</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; }
+    video { width: 100%; border-radius: 12px; background: #000; }
+    input, button { font-size: 1rem; padding: .6rem; border-radius: 8px; border: 1px solid #8888; width: 100%; box-sizing: border-box; }
+    button { background: #16a34a; color: #fff; border: none; cursor: pointer; margin-top: .5rem; }
+    button:disabled { opacity: .5; cursor: default; }
+    .row { margin: .75rem 0; }
+    #out { white-space: pre-wrap; word-break: break-all; padding: .75rem; border-radius: 8px; background: #8881; min-height: 2rem; }
+    .muted { color: #888; font-size: .85rem; }
+    a { color: #16a34a; }
+  </style>
+</head>
+<body>
+  <h1>🪲 Firefly POAP — Claim</h1>
+  <p class="muted">Point your camera at the Firefly's QR code, or paste the claim URI. This page stands in for the native iOS app.</p>
+
+  <video id="video" playsinline></video>
+
+  <div class="row">
+    <input id="uri" placeholder="fireflypoap://claim?c=...&a=0x...&e=...&n=0x...&s=0x..." />
+  </div>
+  <div class="row">
+    <input id="recipient" placeholder="Recipient 0x… (optional; defaults to relayer)" />
+  </div>
+  <div class="row">
+    <button id="verifyBtn">Verify attestation</button>
+    <button id="mintBtn">Mint POAP</button>
+  </div>
+
+  <div class="row"><div id="out">Ready.</div></div>
+
+  <script>
+    const out = document.getElementById("out");
+    const uriInput = document.getElementById("uri");
+    const recipientInput = document.getElementById("recipient");
+    const show = (o) => (out.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 2));
+
+    async function post(pathname, body) {
+      const r = await fetch(pathname, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: r.status, json: await r.json() };
+    }
+
+    document.getElementById("verifyBtn").onclick = async () => {
+      const claimUri = uriInput.value.trim();
+      if (!claimUri) return show("Paste or scan a claim first.");
+      show("Verifying…");
+      const { json } = await post("/verify", { claimUri });
+      show(json);
+    };
+
+    document.getElementById("mintBtn").onclick = async () => {
+      const claimUri = uriInput.value.trim();
+      if (!claimUri) return show("Paste or scan a claim first.");
+      const recipient = recipientInput.value.trim() || undefined;
+      show("Submitting mint…");
+      const { status, json } = await post("/mint", { claimUri, recipient });
+      show((status === 200 ? "✅ Minted!\n" : "⚠️ " + status + "\n") + JSON.stringify(json, null, 2));
+    };
+
+    // Camera scanning via the native BarcodeDetector (Chrome/Android/desktop).
+    async function startCamera() {
+      if (!("BarcodeDetector" in window)) {
+        show("Camera QR scanning not supported in this browser — paste the claim URI instead.");
+        return;
+      }
+      try {
+        const detector = new BarcodeDetector({ formats: ["qr_code"] });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const video = document.getElementById("video");
+        video.srcObject = stream;
+        await video.play();
+        const tick = async () => {
+          try {
+            const codes = await detector.detect(video);
+            if (codes.length) {
+              uriInput.value = codes[0].rawValue;
+              show("Scanned:\n" + codes[0].rawValue);
+            }
+          } catch {}
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      } catch (e) {
+        show("Camera unavailable (" + e.message + ") — paste the claim URI instead.");
+      }
+    }
+    startCamera();
+  </script>
+</body>
+</html>

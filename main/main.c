@@ -7,12 +7,12 @@
 #include "firefly-demos.h"
 #include "firefly-hollows.h"
 
-#include "panel-menu.h"
+#include "panel-kiosk.h"
 
 // Called by ffx_init in the app_main; this pushes a new (initial) panel
 // on the panel stack.
 static int initPanel(void *arg) {
-    return pushPanelMenu();
+    return pushPanelKiosk();
 }
 
 void app_main() {

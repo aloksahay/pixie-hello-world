@@ -1,8 +1,9 @@
 idf_component_register(
   SRCS
     "main.c"
-    "panel-menu.c"
-    "panel-text.c"
+    "poap-claim.c"
+    "panel-kiosk.c"
+    "panel-claim-qr.c"
 
   INCLUDE_DIRS
     ""
